@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Sentinel Global Mesh | Weather Map Mode</title>
+    <title>Sentinel Global Mesh | Vector Radar</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin:0; padding:0; background:#00020a; overflow:hidden; }
@@ -13,80 +13,84 @@
             box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
         }
         .legend { top: auto; bottom: 30px; left: 20px; font-size: 11px; width: 230px; }
-        .dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; margin-right: 10px; }
+        .box { height: 12px; width: 12px; display: inline-block; margin-right: 10px; border: 1px solid rgba(255,255,255,0.2); }
     </style>
 </head>
 <body>
 
     <div class="hud">
         <h2 style="margin:0; font-size:14px;">SENTINEL GLOBAL MESH</h2>
-        <div id="status" style="margin-top:10px; color:#0088ff;">SYSTEM FLUSH ACTIVE</div>
+        <div id="status" style="margin-top:10px; color:#0088ff;">VECTOR SCAN ACTIVE</div>
     </div>
 
     <div class="hud legend">
-        <div style="margin-bottom:5px;"><span class="dot" style="background:#0044ff;"></span> &le; 50 (SECURE MESH)</div>
-        <div style="margin-bottom:5px;"><span class="dot" style="background:#ffff00;"></span> 51-200 (ELEVATED)</div>
-        <div><span class="dot" style="background:#ff0000;"></span> &gt; 200 (CRITICAL)</div>
+        <div style="margin-bottom:5px;"><span class="box" style="background:#002244;"></span> &le; 50 (SECURE MESH)</div>
+        <div style="margin-bottom:5px;"><span class="box" style="background:#ffff00;"></span> 51-200 (ELEVATED)</div>
+        <div><span class="box" style="background:#ff0000;"></span> &gt; 200 (CRITICAL)</div>
     </div>
 
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
-
     <script>
         const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+        
+        let geojsonLayer;
+        let attackData = {}; // Stores { "CountryName": magnitude }
 
-        // --- WEATHER MAP CONFIGURATION ---
-        let heat = L.heatLayer([], {
-            radius: 50,       // Large radius for blending
-            blur: 35,         // High blur for "Weather Map" flush look
-            maxZoom: 4,
-            gradient: {
-                0.2: '#0022ff', // Deep Blue
-                0.4: '#0088ff', // Lighter Blue
-                0.6: '#ffff00', // Yellow (Threat)
-                1.0: '#ff0000'  // Red (Attack)
-            }
-        }).addTo(map);
-
-        // CREATE A DENSE GRID FOR THE "FLUSH" LOOK
-        function generateDenseGrid() {
-            let grid = [];
-            // Narrower steps (10 deg vs 20 deg) creates a solid sheet of color
-            for (let lat = -60; lat <= 75; lat += 8) {
-                for (let lon = -180; lon <= 180; lon += 12) {
-                    grid.push([lat, lon, 0.2]); // 0.2 matches the blue gradient
-                }
-            }
-            return grid;
+        // 1. Function to determine color based on your specific rules
+        function getColor(name) {
+            let val = attackData[name] || 0;
+            if (val > 200) return '#ff0000'; // RED
+            if (val > 50)  return '#ffff00'; // YELLOW
+            return '#002244';                // BLUE (Base)
         }
 
-        const worldMeshBase = generateDenseGrid();
+        function style(feature) {
+            return {
+                fillColor: getColor(feature.properties.name),
+                weight: 1,
+                opacity: 1,
+                color: '#00d4ff', // Electric blue borders
+                fillOpacity: 0.7
+            };
+        }
 
+        // 2. Load World Borders (GeoJSON)
+        // This file contains the shapes of all countries
+        fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson')
+            .then(res => res.json())
+            .then(data => {
+                geojsonLayer = L.geoJson(data, { style: style }).addTo(map);
+            });
+
+        // 3. Sync with your Render Server
         async function sync() {
             try {
                 const r = await fetch('/api/stats');
                 const d = await r.json();
                 
-                let liveData = d.zones.map(z => {
-                    let intensity = 0.2; // Base Blue
-                    if (z.magnitude > 200) intensity = 1.0; 
-                    else if (z.magnitude > 50) intensity = 0.6; 
-                    return [z.lat, z.lon, intensity];
+                // Reset data
+                attackData = {};
+                
+                // Map the hits from your EDR to specific areas
+                // For this version, your 'app.py' should ideally send a 'country' field
+                d.zones.forEach(z => {
+                    // If you don't have country names, we'll simulate one for now
+                    // In a real setup, your EDR would send "Bangladesh" or "USA"
+                    if(z.lat > 20 && z.lat < 26 && z.lon > 88 && z.lon < 92) {
+                        attackData["Bangladesh"] = z.magnitude;
+                    }
                 });
 
-                // Combine them
-                heat.setLatLngs([...worldMeshBase, ...liveData]);
-                document.getElementById('status').innerText = "MESH ONLINE | TOTAL COVERAGE";
+                if (geojsonLayer) geojsonLayer.setStyle(style);
+                document.getElementById('status').innerText = "MESH ONLINE | DISTRICTS SECURE";
             } catch(e) {
-                document.getElementById('status').innerText = "LINK LOST";
+                document.getElementById('status').innerText = "SYNC ERROR";
             }
         }
 
-        setInterval(sync, 4000);
-        sync();
+        setInterval(sync, 5000);
     </script>
 </body>
 </html>
