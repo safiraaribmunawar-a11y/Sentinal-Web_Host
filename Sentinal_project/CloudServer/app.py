@@ -3,7 +3,7 @@ from flask_cors import CORS
 import random
 import os
 
-app = Flask(__name__)
+app = Flask('https://sentinel-mesh.onrender.com/')
 CORS(app)
 
 # This list will store data sent from your EDR software
@@ -56,7 +56,8 @@ def stats():
     # Combine both lists and send to the dashboard
     return jsonify({"zones": real_time_data + background_zones})
 
-if __name__ == "__main__":
+if 'https://sentinel-mesh.onrender.com/' == "__main__":
     # Render requires the port to be dynamic
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
