@@ -1,34 +1,32 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Sentinel Global Mesh | District-Wide Radar</title>
+    <title>Sentinel Global Mesh | Blue Sector</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin:0; padding:0; background:#00020a; overflow:hidden; }
         #map { height: 100vh; width: 100vw; background: #00020a; }
-        
-        /* HUD UI */
         .hud { 
             position: absolute; z-index: 1000; background: rgba(0,10,30,0.9); 
-            border: 1px solid #00d4ff; padding: 15px; font-family: 'Courier New', monospace;
-            color: #00d4ff; top: 20px; left: 20px; width: 280px;
+            border: 1px solid #00d4ff; padding: 15px; font-family: monospace;
+            color: #00d4ff; top: 20px; left: 20px; width: 260px;
             box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
         }
-        .legend { top: auto; bottom: 30px; left: 20px; width: 220px; font-size: 11px; }
-        .status-dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; margin-right: 10px; }
+        .legend { top: auto; bottom: 30px; left: 20px; font-size: 11px; width: 230px; }
+        .dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; margin-right: 10px; }
     </style>
 </head>
 <body>
 
     <div class="hud">
-        <h2 style="margin:0; font-size:16px;">SENTINEL GLOBAL MESH</h2>
-        <div id="status" style="margin-top:10px; color:#0088ff;">SYNCING GLOBAL SECTORS...</div>
+        <h2 style="margin:0; font-size:14px;">SENTINEL GLOBAL MESH</h2>
+        <div id="status" style="margin-top:10px; color:#0088ff;">INITIALIZING GLOBAL GRID...</div>
     </div>
 
     <div class="hud legend">
-        <div style="margin-bottom:8px;"><span class="status-dot" style="background:#0044ff;"></span> &le; 50 Attacks (STABLE)</div>
-        <div style="margin-bottom:8px;"><span class="status-dot" style="background:#ffff00;"></span> 51-200 Attacks (ELEVATED)</div>
-        <div><span class="status-dot" style="background:#ff0000;"></span> &gt; 200 Attacks (CRITICAL)</div>
+        <div style="margin-bottom:5px;"><span class="dot" style="background:#0044ff;"></span> &le; 50 (SECURE MESH)</div>
+        <div style="margin-bottom:5px;"><span class="dot" style="background:#ffff00;"></span> 51-200 (ELEVATED)</div>
+        <div><span class="dot" style="background:#ff0000;"></span> &gt; 200 (CRITICAL)</div>
     </div>
 
     <div id="map"></div>
@@ -40,47 +38,55 @@
         const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-        // CONFIGURING THE BLUE -> YELLOW -> RED GRADIENT
-        // 0.2 intensity is blue, 0.6 is yellow, 1.0 is red
+        // Gradient: Force strict colors for your thresholds
         let heat = L.heatLayer([], {
-            radius: 40,
-            blur: 25,
+            radius: 30,
+            blur: 15,
             maxZoom: 5,
             gradient: {
-                0.2: '#0044ff', // BLUE for low numbers
-                0.6: '#ffff00', // YELLOW for medium
-                1.0: '#ff0000'  // RED for high
+                0.2: '#0044ff', // BLUE (Base)
+                0.6: '#ffff00', // YELLOW (Warning)
+                1.0: '#ff0000'  // RED (Attack)
             }
         }).addTo(map);
 
-        // STATIC GHOST NODES: These keep the world blue by default
-        const ghostNodes = [
-            [40, -100, 0.1], [51, 0, 0.1], [23, 90, 0.1], [-25, 133, 0.1], 
-            [35, 140, 0.1], [-15, -60, 0.1], [10, 20, 0.1]
-        ];
+        // GENERATE THE "WHOLE WORLD" BLUE GRID
+        function generateGlobalGrid() {
+            let grid = [];
+            // Loops through every 20 degrees of the Earth to place a 'Blue' node
+            for (let lat = -60; lat <= 70; lat += 20) {
+                for (let lon = -160; lon <= 160; lon += 25) {
+                    grid.push([lat, lon, 0.15]); // 0.15 intensity keeps it blue
+                }
+            }
+            return grid;
+        }
+
+        const worldMeshBase = generateGlobalGrid();
 
         async function sync() {
             try {
                 const r = await fetch('/api/stats');
                 const d = await r.json();
                 
-                // Convert your attack counts (magnitude) into the 0.0 - 1.0 range for the heatmap
-                let livePoints = d.zones.map(z => {
-                    let intensity = 0.2; // Default blue
+                // Map the magnitude from your app.py to the correct intensity
+                let liveData = d.zones.map(z => {
+                    let intensity = 0.15; // Default Blue
                     if (z.magnitude > 200) intensity = 1.0;      // Red
                     else if (z.magnitude > 50) intensity = 0.6;  // Yellow
-                    
                     return [z.lat, z.lon, intensity];
                 });
+
+                // Combine the static world-wide blue grid with your real-time attacks
+                heat.setLatLngs([...worldMeshBase, ...liveData]);
                 
-                heat.setLatLngs([...ghostNodes, ...livePoints]);
-                document.getElementById('status').innerText = "MESH ACTIVE | " + d.zones.length + " GLOBAL HITS";
+                document.getElementById('status').innerText = "MESH ONLINE | DISTRICT SCAN ACTIVE";
             } catch(e) {
-                document.getElementById('status').innerText = "MESH OFFLINE - RECONNECTING...";
+                document.getElementById('status').innerText = "CONNECTION LOST";
             }
         }
 
-        setInterval(sync, 4000);
+        setInterval(sync, 5000);
         sync();
     </script>
 </body>
