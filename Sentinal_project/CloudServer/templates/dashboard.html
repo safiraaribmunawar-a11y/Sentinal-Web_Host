@@ -1,99 +1,67 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Sentinel Global Mesh | Vector Radar</title>
+    <title>Sentinel Global Mesh</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin:0; padding:0; background:#00020a; overflow:hidden; }
         #map { height: 100vh; width: 100vw; background: #00020a; }
-        
         .hud { 
             position: absolute; z-index: 1000; background: rgba(0,10,30,0.9); 
-            border: 1px solid #00d4ff; padding: 15px; font-family: 'Courier New', monospace;
-            color: #00d4ff; top: 20px; left: 20px; width: 280px;
-            box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+            border: 1px solid #00d4ff; padding: 15px; font-family: monospace;
+            color: #00d4ff; top: 20px; left: 20px; width: 260px;
         }
-        .legend { top: auto; bottom: 30px; left: 20px; width: 240px; font-size: 11px; }
-        .box { height: 10px; width: 10px; display: inline-block; margin-right: 8px; border: 1px solid rgba(255,255,255,0.3); }
+        .legend { top: auto; bottom: 30px; left: 20px; font-size: 11px; }
+        .box { height: 10px; width: 10px; display: inline-block; margin-right: 8px; }
     </style>
 </head>
 <body>
-
     <div class="hud">
-        <h2 style="margin:0; font-size:16px; letter-spacing:1px;">SENTINEL MESH</h2>
-        <div id="status" style="margin-top:10px; color:#0088ff; font-size:12px;">SCANNING GLOBAL SECTORS...</div>
+        <h2 style="margin:0; font-size:14px;">SENTINEL MESH</h2>
+        <div id="status" style="margin-top:10px; color:#0088ff;">SCANNING...</div>
     </div>
-
     <div class="hud legend">
-        <div style="margin-bottom:6px;"><span class="box" style="background:#002b5e;"></span> &le; 50 Attacks (SECURE)</div>
-        <div style="margin-bottom:6px;"><span class="box" style="background:#ffff00;"></span> 51-200 Attacks (ELEVATED)</div>
-        <div><span class="box" style="background:#ff0000;"></span> &gt; 200 Attacks (CRITICAL)</div>
+        <div><span class="box" style="background:#002b5e;"></span> &le; 50 (SECURE)</div>
+        <div><span class="box" style="background:#ffff00;"></span> 51-200 (ELEVATED)</div>
+        <div><span class="box" style="background:#ff0000;"></span> &gt; 200 (CRITICAL)</div>
     </div>
-
     <div id="map"></div>
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
-        
         let geojsonLayer;
-        let globalThreats = {}; // Format: { "CountryName": max_magnitude }
+        let globalThreats = {};
 
-        // Rule-based color engine
         function getSectorColor(name) {
             let val = globalThreats[name] || 0;
-            if (val > 200) return '#ff0000'; // RED
-            if (val > 50)  return '#ffff00'; // YELLOW
-            return '#002b5e';                // MESH BLUE
+            if (val > 200) return '#ff0000';
+            if (val > 50)  return '#ffff00';
+            return '#002b5e';
         }
 
-        function sectorStyle(feature) {
-            return {
-                fillColor: getSectorColor(feature.properties.name),
-                weight: 1,
-                opacity: 1,
-                color: '#00d4ff', // Borders
-                fillOpacity: 0.8
-            };
+        function sectorStyle(f) {
+            return { fillColor: getSectorColor(f.properties.name), weight: 1, color: '#00d4ff', fillOpacity: 0.8 };
         }
 
-        // Load Global Boundaries
         fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson')
             .then(res => res.json())
-            .then(data => {
-                geojsonLayer = L.geoJson(data, { style: sectorStyle }).addTo(map);
-            });
+            .then(data => { geojsonLayer = L.geoJson(data, { style: sectorStyle }).addTo(map); });
 
-        // The logic to connect Coordinates to Country Shapes
         async function updateMesh() {
             try {
                 const response = await fetch('/api/stats');
                 const data = await response.json();
-                
                 let newThreats = {};
-                
-                // For demonstration, we map specific coordinates to country names
-                // In a professional version, we'd use a reverse-geocoder library
                 data.zones.forEach(z => {
                     let country = "Unknown";
                     if (z.lat > 20 && z.lat < 27 && z.lon > 88 && z.lon < 93) country = "Bangladesh";
-                    if (z.lat > 24 && z.lat < 50 && z.lon > -125 && z.lon < -66) country = "United States of America";
-                    // You can add more coordinate-to-country rules here
-                    
-                    if (country !== "Unknown") {
-                        newThreats[country] = Math.max(newThreats[country] || 0, z.magnitude);
-                    }
+                    if (country !== "Unknown") newThreats[country] = Math.max(newThreats[country] || 0, z.magnitude);
                 });
-
                 globalThreats = newThreats;
                 if (geojsonLayer) geojsonLayer.setStyle(sectorStyle);
-                
-                document.getElementById('status').innerText = "MESH ONLINE | " + data.zones.length + " ACTIVE NODES";
-            } catch(e) {
-                document.getElementById('status').innerText = "LINK INTERRUPTED";
-            }
+                document.getElementById('status').innerText = "MESH ONLINE | " + data.zones.length + " ACTIVE";
+            } catch(e) {}
         }
-
         setInterval(updateMesh, 3000);
     </script>
 </body>
