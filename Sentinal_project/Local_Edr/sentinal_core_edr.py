@@ -6,6 +6,27 @@ import os
 import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
+import requests
+import time
+
+# YOUR NEW CLOUD URL
+API_URL = "https://sentinel-mesh.onrender.com"
+
+def send_threat_data(lat, lon, magnitude):
+    payload = {
+        "lat": lat,
+        "lon": lon,
+        "magnitude": magnitude
+    }
+    try:
+        # This sends the data from your laptop to the Singapore server
+        response = requests.post(API_URL, json=payload)
+        print(f"Status: {response.status_code}")
+    except Exception as e:
+        print(f"Connection Failed: {e}")
+
+# Example: Sending a hit from Dhaka
+send_threat_data(23.8103, 90.4125, 350)
 
 abspath = os.path.abspath(__file__)
 dname = os.path.dirname(abspath)
