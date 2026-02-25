@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sentinel Global Mesh | District-Wide Observer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body, html { margin:0; padding:0; background:#000; overflow:hidden; }
+        #map { height: 100vh; width: 100vw; background: #000; position: absolute; }
+        
+        /* HUD UI Styling */
+        .hud { 
+            position: absolute; z-index: 1000; background: rgba(0,0,0,0.85); 
+            border: 1px solid #00ff41; padding: 15px; font-family: monospace;
+            color: #00ff41; top: 20px; left: 20px; width: 260px;
+            box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
+        }
+        .legend { top: 20px; right: 20px; left: auto; font-size: 11px; width: 190px; }
+        .dot { height: 10px; width: 10px; display: inline-block; margin-right: 8px; border-radius: 50%; }
+        
+        /* Search Bar Styling */
+        input { background:#000; color:#fff; border:1px solid #00ff41; padding:5px; width:100%; font-family: monospace; }
+        button { background:#00ff41; border:none; color:#000; font-weight:bold; cursor:pointer; padding:5px 10px; }
+        button:hover { background:#fff; }
+
+        /* The Hurricane/Glow effect for the data zones */
+        .leaflet-interactive { filter: blur(35px); opacity: 0.6; transition: 2s; }
+    </style>
+</head>
+<body>
+
+    <div class="hud">
+        <h2 style="margin:0 0 10px 0; font-size:14px;">SENTINEL MESH SCANNER</h2>
+        <div style="display:flex; gap:5px;">
+            <input type="text" id="cityInput" placeholder="SEARCH SECTOR...">
+            <button onclick="runSearch()">SCAN</button>
+        </div>
+        <div id="status" style="font-size:10px; margin-top:10px; color: #888;">INITIALIZING LINK...</div>
+    </div>
+
+    <div class="hud legend">
+        <h2 style="margin:0 0 8px 0; font-size:12px;">THREAT MAGNITUDE</h2>
+        <div style="margin-bottom:5px;"><span class="dot" style="background:#00ff41"></span> SAFE (< 50)</div>
+        <div style="margin-bottom:5px;"><span class="dot" style="background:#ffff00"></span> ELEVATED (< 200)</div>
+        <div><span class="dot" style="background:#ff0000"></span> CRITICAL (> 200)</div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // 1. Initialize Global Map
+        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
+        
+        // Using CartoDB Dark Matter tiles (Perfect for engineering/mesh looks)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+
+        let meshLayer = L.layerGroup().addTo(map);
+
+        // 2. Global Sector Search Function
+        async function runSearch() {
+            const city = document.getElementById('cityInput').value;
+            if(!city) return;
+            const statusBox = document.getElementById('status');
+            statusBox.innerText = "LOCATING SECTOR...";
+            
+            try {
+                const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${city}`);
+                const d = await r.json();
+                if(d.length > 0) {
+                    map.flyTo([d[0].lat, d[0].lon], 7);
+                    statusBox.innerText = "SECTOR ACQUIRED";
+                } else {
+                    statusBox.innerText = "SECTOR NOT FOUND";
+                }
+            } catch(e) { 
+                statusBox.innerText = "SEARCH OFFLINE";
+            }
+        }
+
+        // 3. Sync with Python Cloud Server
+        async function sync() {
+            try {
+                // FETCHING FROM RELATIVE URL (Works on Render automatically)
+                const r = await fetch('/api/stats');
+                
+                if (!r.ok) throw new Error("Server Waking Up...");
+                
+                const d = await r.json();
+                
+                meshLayer.clearLayers();
+                d.zones.forEach(z => {
+                    L.circle([z.lat, z.lon], {
+                        radius: z.radius,
+                        color: z.color,
+                        fillColor: z.color,
+                        fillOpacity: 1,
+                        weight: 0
+                    }).addTo(meshLayer);
+                });
+                
+                document.getElementById('status').innerText = "MESH ONLINE | " + d.zones.length + " SECTORS LIVE";
+                document.getElementById('status').style.color = "#00ff41";
+            } catch(e) {
+                document.getElementById('status').innerText = "LINK PENDING (WAKING SERVER...)";
+                document.getElementById('status').style.color = "#ff8800";
+                console.log("Sync wait: Server is likely cold-starting on Render.");
+            }
+        }
+
+        // Auto-sync every 5 seconds
+        setInterval(sync, 5000);
+        sync();
+    </script>
+</body>
+</html>
