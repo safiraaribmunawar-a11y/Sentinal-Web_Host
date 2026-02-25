@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Sentinel Global Mesh | Blue Sector</title>
+    <title>Sentinel Global Mesh | Weather Map Mode</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin:0; padding:0; background:#00020a; overflow:hidden; }
@@ -20,7 +20,7 @@
 
     <div class="hud">
         <h2 style="margin:0; font-size:14px;">SENTINEL GLOBAL MESH</h2>
-        <div id="status" style="margin-top:10px; color:#0088ff;">INITIALIZING GLOBAL GRID...</div>
+        <div id="status" style="margin-top:10px; color:#0088ff;">SYSTEM FLUSH ACTIVE</div>
     </div>
 
     <div class="hud legend">
@@ -38,55 +38,54 @@
         const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-        // Gradient: Force strict colors for your thresholds
+        // --- WEATHER MAP CONFIGURATION ---
         let heat = L.heatLayer([], {
-            radius: 30,
-            blur: 15,
-            maxZoom: 5,
+            radius: 50,       // Large radius for blending
+            blur: 35,         // High blur for "Weather Map" flush look
+            maxZoom: 4,
             gradient: {
-                0.2: '#0044ff', // BLUE (Base)
-                0.6: '#ffff00', // YELLOW (Warning)
-                1.0: '#ff0000'  // RED (Attack)
+                0.2: '#0022ff', // Deep Blue
+                0.4: '#0088ff', // Lighter Blue
+                0.6: '#ffff00', // Yellow (Threat)
+                1.0: '#ff0000'  // Red (Attack)
             }
         }).addTo(map);
 
-        // GENERATE THE "WHOLE WORLD" BLUE GRID
-        function generateGlobalGrid() {
+        // CREATE A DENSE GRID FOR THE "FLUSH" LOOK
+        function generateDenseGrid() {
             let grid = [];
-            // Loops through every 20 degrees of the Earth to place a 'Blue' node
-            for (let lat = -60; lat <= 70; lat += 20) {
-                for (let lon = -160; lon <= 160; lon += 25) {
-                    grid.push([lat, lon, 0.15]); // 0.15 intensity keeps it blue
+            // Narrower steps (10 deg vs 20 deg) creates a solid sheet of color
+            for (let lat = -60; lat <= 75; lat += 8) {
+                for (let lon = -180; lon <= 180; lon += 12) {
+                    grid.push([lat, lon, 0.2]); // 0.2 matches the blue gradient
                 }
             }
             return grid;
         }
 
-        const worldMeshBase = generateGlobalGrid();
+        const worldMeshBase = generateDenseGrid();
 
         async function sync() {
             try {
                 const r = await fetch('/api/stats');
                 const d = await r.json();
                 
-                // Map the magnitude from your app.py to the correct intensity
                 let liveData = d.zones.map(z => {
-                    let intensity = 0.15; // Default Blue
-                    if (z.magnitude > 200) intensity = 1.0;      // Red
-                    else if (z.magnitude > 50) intensity = 0.6;  // Yellow
+                    let intensity = 0.2; // Base Blue
+                    if (z.magnitude > 200) intensity = 1.0; 
+                    else if (z.magnitude > 50) intensity = 0.6; 
                     return [z.lat, z.lon, intensity];
                 });
 
-                // Combine the static world-wide blue grid with your real-time attacks
+                // Combine them
                 heat.setLatLngs([...worldMeshBase, ...liveData]);
-                
-                document.getElementById('status').innerText = "MESH ONLINE | DISTRICT SCAN ACTIVE";
+                document.getElementById('status').innerText = "MESH ONLINE | TOTAL COVERAGE";
             } catch(e) {
-                document.getElementById('status').innerText = "CONNECTION LOST";
+                document.getElementById('status').innerText = "LINK LOST";
             }
         }
 
-        setInterval(sync, 5000);
+        setInterval(sync, 4000);
         sync();
     </script>
 </body>
