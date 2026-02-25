@@ -3,61 +3,67 @@ from flask_cors import CORS
 import random
 import os
 
-app = Flask('https://sentinel-mesh.onrender.com/')
+app = Flask(__name__)
 CORS(app)
 
-# This list will store data sent from your EDR software
-real_time_data = []
+# This list acts as your temporary "Mesh Database"
+# It stores real hits sent from your EDR software
+mesh_registry = []
 
 @app.route('/')
 def index():
     return render_template('dashboard.html')
 
-# 1. THE RECEIVER: This is where your EDR sends data
+# --- 1. THE RECEIVER (For your EDR software) ---
 @app.route('/api/report', methods=['POST'])
 def report():
     try:
         data = request.get_json()
         
-        # We extract lat, lon, and magnitude from your software
-        new_entry = {
-            "lat": float(data.get('lat')),
-            "lon": float(data.get('lon')),
-            "color": "#ff0000" if int(data.get('magnitude', 0)) > 200 else "#00ff41",
-            "radius": int(data.get('magnitude', 100)) * 2000,
-            "is_real": True
+        # Extracting data from your EDR transmission
+        new_hit = {
+            "lat": float(data.get('lat', 23.81)),
+            "lon": float(data.get('lon', 90.41)),
+            "magnitude": int(data.get('magnitude', 100)),
+            "id": random.randint(1000, 9999)
         }
         
-        # Keep only the last 50 reports so the server doesn't get slow
-        real_time_data.insert(0, new_entry)
-        if len(real_time_data) > 50:
-            real_time_data.pop()
+        # Color logic based on magnitude
+        if new_hit['magnitude'] > 200:
+            new_hit['color'] = "#ff0000" # Critical
+        elif new_hit['magnitude'] > 50:
+            new_hit['color'] = "#ffff00" # Elevated
+        else:
+            new_hit['color'] = "#00ff41" # Safe
             
-        return jsonify({"status": "success", "message": "Data integrated into Mesh"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+        new_hit['radius'] = new_hit['magnitude'] * 2000
 
-# 2. THE SENDER: This sends data TO your website map
+        # Add to the start of the list
+        mesh_registry.insert(0, new_hit)
+        
+        # Keep only the last 100 hits to stay fast
+        if len(mesh_registry) > 100:
+            mesh_registry.pop()
+            
+        print(f"Mesh Update: New hit at {new_hit['lat']}, {new_hit['lon']}")
+        return jsonify({"status": "Success", "received": new_hit}), 200
+        
+    except Exception as e:
+        return jsonify({"status": "Error", "message": str(e)}), 400
+
+# --- 2. THE SENDER (For the Website Map) ---
 @app.route('/api/stats')
 def stats():
-    # We combine our real EDR data with some random "background" mesh data
-    background_zones = []
-    locations = [[40, -100], [51, 0], [23, 90], [-25, 133]] # Random global spots
-    
-    for loc in locations:
-        background_zones.append({
-            "lat": loc[0] + random.uniform(-5, 5),
-            "lon": loc[1] + random.uniform(-5, 5),
-            "color": "#00ff41",
-            "radius": random.randint(400000, 700000),
-            "is_real": False
-        })
+    # If the list is empty, we show one 'dummy' point so the map isn't blank
+    if not mesh_registry:
+        return jsonify({"zones": [{
+            "lat": 23.81, "lon": 90.41, 
+            "color": "#00ff41", "radius": 500000
+        }]})
+        
+    return jsonify({"zones": mesh_registry})
 
-    # Combine both lists and send to the dashboard
-    return jsonify({"zones": real_time_data + background_zones})
-
-if 'https://sentinel-mesh.onrender.com/' == "__main__":
-    # Render requires the port to be dynamic
+if __name__ == "__main__":
+    # Standard dynamic port for Render
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-
