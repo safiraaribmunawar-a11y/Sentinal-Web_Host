@@ -1,114 +1,74 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Sentinel Global Mesh | District-Wide Observer</title>
+    <title>Sentinel Global Mesh | Blue Sector</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin:0; padding:0; background:#000; overflow:hidden; }
-        #map { height: 100vh; width: 100vw; background: #000; position: absolute; }
-        
-        /* HUD UI Styling */
+        body, html { margin:0; padding:0; background:#00020a; overflow:hidden; }
+        #map { height: 100vh; width: 100vw; background: #00020a; }
         .hud { 
-            position: absolute; z-index: 1000; background: rgba(0,0,0,0.85); 
-            border: 1px solid #00ff41; padding: 15px; font-family: monospace;
-            color: #00ff41; top: 20px; left: 20px; width: 260px;
-            box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
+            position: absolute; z-index: 1000; background: rgba(0,10,30,0.9); 
+            border: 1px solid #00d4ff; padding: 15px; font-family: 'Courier New', monospace;
+            color: #00d4ff; top: 20px; left: 20px; width: 280px;
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
         }
-        .legend { top: 20px; right: 20px; left: auto; font-size: 11px; width: 190px; }
-        .dot { height: 10px; width: 10px; display: inline-block; margin-right: 8px; border-radius: 50%; }
-        
-        /* Search Bar Styling */
-        input { background:#000; color:#fff; border:1px solid #00ff41; padding:5px; width:100%; font-family: monospace; }
-        button { background:#00ff41; border:none; color:#000; font-weight:bold; cursor:pointer; padding:5px 10px; }
-        button:hover { background:#fff; }
-
-        /* The Hurricane/Glow effect for the data zones */
-        .leaflet-interactive { filter: blur(35px); opacity: 0.6; transition: 2s; }
+        #status { font-size: 11px; color: #0088ff; margin-top: 10px; text-transform: uppercase; }
     </style>
 </head>
 <body>
 
     <div class="hud">
-        <h2 style="margin:0 0 10px 0; font-size:14px;">SENTINEL MESH SCANNER</h2>
-        <div style="display:flex; gap:5px;">
-            <input type="text" id="cityInput" placeholder="SEARCH SECTOR...">
-            <button onclick="runSearch()">SCAN</button>
-        </div>
-        <div id="status" style="font-size:10px; margin-top:10px; color: #888;">INITIALIZING LINK...</div>
-    </div>
-
-    <div class="hud legend">
-        <h2 style="margin:0 0 8px 0; font-size:12px;">THREAT MAGNITUDE</h2>
-        <div style="margin-bottom:5px;"><span class="dot" style="background:#00ff41"></span> SAFE (< 50)</div>
-        <div style="margin-bottom:5px;"><span class="dot" style="background:#ffff00"></span> ELEVATED (< 200)</div>
-        <div><span class="dot" style="background:#ff0000"></span> CRITICAL (> 200)</div>
+        <h2 style="margin:0; font-size:16px;">GLOBAL MESH SYSTEM</h2>
+        <div id="status">Scanning Deep Mesh...</div>
     </div>
 
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
     <script>
-        // 1. Initialize Global Map
+        // Initialize Map with dark theme
         const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
-        
-        // Using CartoDB Dark Matter tiles (Perfect for engineering/mesh looks)
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-        let meshLayer = L.layerGroup().addTo(map);
-
-        // 2. Global Sector Search Function
-        async function runSearch() {
-            const city = document.getElementById('cityInput').value;
-            if(!city) return;
-            const statusBox = document.getElementById('status');
-            statusBox.innerText = "LOCATING SECTOR...";
-            
-            try {
-                const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${city}`);
-                const d = await r.json();
-                if(d.length > 0) {
-                    map.flyTo([d[0].lat, d[0].lon], 7);
-                    statusBox.innerText = "SECTOR ACQUIRED";
-                } else {
-                    statusBox.innerText = "SECTOR NOT FOUND";
-                }
-            } catch(e) { 
-                statusBox.innerText = "SEARCH OFFLINE";
+        // Define the Heatmap Layer
+        // Gradient: 0.0 is deep blue (base), 1.0 is bright red (high threat)
+        let heat = L.heatLayer([], {
+            radius: 35,
+            blur: 20,
+            maxZoom: 5,
+            gradient: {
+                0.0: '#001133', // Deep blue base
+                0.2: '#0044ff', // Electric blue
+                0.5: '#00ffcc', // Cyan
+                0.8: '#ffff00', // Yellow
+                1.0: '#ff0000'  // Red hit
             }
-        }
+        }).addTo(map);
 
-        // 3. Sync with Python Cloud Server
         async function sync() {
             try {
-                // FETCHING FROM RELATIVE URL (Works on Render automatically)
                 const r = await fetch('/api/stats');
-                
-                if (!r.ok) throw new Error("Server Waking Up...");
-                
                 const d = await r.json();
                 
-                meshLayer.clearLayers();
-                d.zones.forEach(z => {
-                    L.circle([z.lat, z.lon], {
-                        radius: z.radius,
-                        color: z.color,
-                        fillColor: z.color,
-                        fillOpacity: 1,
-                        weight: 0
-                    }).addTo(meshLayer);
-                });
+                // Format data for the heatmap: [lat, lon, intensity]
+                let points = d.zones.map(z => [z.lat, z.lon, z.magnitude / 500]);
                 
-                document.getElementById('status').innerText = "MESH ONLINE | " + d.zones.length + " SECTORS LIVE";
-                document.getElementById('status').style.color = "#00ff41";
+                // ADD A GLOBAL BLUE GLOW (Simulating the 'trillions of computers' mesh)
+                // We add a few faint points around the world to keep it blue
+                const globalMesh = [
+                    [40, -100, 0.1], [51, 0, 0.1], [23, 90, 0.1], [-25, 133, 0.1], [35, 140, 0.1]
+                ];
+                
+                heat.setLatLngs([...globalMesh, ...points]);
+                document.getElementById('status').innerText = "MESH ONLINE | " + d.zones.length + " ACTIVE NODES";
             } catch(e) {
-                document.getElementById('status').innerText = "LINK PENDING (WAKING SERVER...)";
-                document.getElementById('status').style.color = "#ff8800";
-                console.log("Sync wait: Server is likely cold-starting on Render.");
+                document.getElementById('status').innerText = "LINK INTERRUPTED - RETRYING...";
             }
         }
 
-        // Auto-sync every 5 seconds
-        setInterval(sync, 5000);
+        setInterval(sync, 3000);
         sync();
     </script>
 </body>
