@@ -1,48 +1,22 @@
-import psutil
-import time
-import serial
-import requests
-import os
+import psutil, time, serial, requests, os
 import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
-import requests
-import time
 
-# YOUR NEW CLOUD URL
-API_URL = "https://sentinel-mesh.onrender.com"
-
-def send_threat_data(lat, lon, magnitude):
-    payload = {
-        "lat": lat,
-        "lon": lon,
-        "magnitude": magnitude
-    }
-    try:
-        # This sends the data from your laptop to the Singapore server
-        response = requests.post(API_URL, json=payload)
-        print(f"Status: {response.status_code}")
-    except Exception as e:
-        print(f"Connection Failed: {e}")
-
-# Example: Sending a hit from Dhaka
-send_threat_data(23.8103, 90.4125, 350)
-
-abspath = os.path.abspath(__file__)
-dname = os.path.dirname(abspath)
-os.chdir(dname)
-
+# --- CONFIG ---
+CLOUD_URL = "https://sentinel-mesh.onrender.com/api/report"
 COM_PORT = 'COM3' 
 BAUD_RATE = 9600
-CLOUD_URL = "https://sentinel-global.onrender.com/api/report"
 SECURITY_KEY = "admin123"
+LAT, LON = 23.8103, 90.4125
 
+# --- SETUP ---
 try:
     ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=0.1)
-    time.sleep(3) 
-    print(f"Hardware Connected on {COM_PORT}")
-except Exception as e:
-    print(f"Hardware not found: {e}")
+    time.sleep(2)
+    print(f"✅ Hardware Connected on {COM_PORT}")
+except:
+    print("⚠️ Hardware not found. Continuing in software mode.")
     ser = None
 
 scaler = StandardScaler()
@@ -51,77 +25,44 @@ model = IsolationForest(contamination=0.05, random_state=42)
 def get_metrics():
     cpu = psutil.cpu_percent(interval=None)
     ram = psutil.virtual_memory().percent
-    net1 = psutil.net_io_counters().bytes_sent + psutil.net_io_counters().bytes_recv
-    time.sleep(0.5) 
-    net2 = psutil.net_io_counters().bytes_sent + psutil.net_io_counters().bytes_recv
-    return [cpu, ram, (net2 - net1)]
+    n1 = psutil.net_io_counters().bytes_sent + psutil.net_io_counters().bytes_recv
+    time.sleep(0.5)
+    n2 = psutil.net_io_counters().bytes_sent + psutil.net_io_counters().bytes_recv
+    return [cpu, ram, (n2 - n1)]
 
-def upload_to_cloud(status, cpu, ram):
+def sync_cloud(status, mag):
     try:
-        requests.post(CLOUD_URL, json={"status": status, "cpu": cpu, "ram": ram}, timeout=1)
-    except:
-        pass
+        requests.post(CLOUD_URL, json={"lat": LAT, "lon": LON, "magnitude": mag}, timeout=2)
+    except: pass
 
-def send_to_arduino(status):
-    if ser:
-        try:
-            ser.write(f"{status}\n".encode())
-        except: pass
+# --- BASELINE ---
+print("[!] SentinelCore: Learning System Baseline (20s)...")
+train = [get_metrics() for _ in range(20)]
+scaler.fit(train)
+model.fit(scaler.transform(train))
+print("✅ Baseline Locked.\n")
 
-print("\nSentinelCore: Learning System Baseline...")
-training_data = []
-for i in range(20):
-    m = get_metrics()
-    training_data.append(m)
-    print(f"Snap {i+1}/20: {m}")
-
-training_data = np.array(training_data)
-scaler.fit(training_data)
-model.fit(scaler.transform(training_data))
-print("Baseline Locked.")
+# --- LOOP ---
 try:
     while True:
-        raw_m = get_metrics()
-        scaled_m = scaler.transform([raw_m])
-        prediction = model.predict(scaled_m)[0]
+        m = get_metrics()
+        pred = model.predict(scaler.transform([m]))[0]
+        cpu, ram, _ = m
         
-        cpu, ram, net = raw_m
-        score = 0
-        if cpu > 85: score += 1
-        if ram > 85: score += 1
-        if prediction == -1: score += 1
-        
-        status = "SAFE"
-        if cpu > 98 or score >= 2: status = "SEVERE"
-        elif score == 1: status = "ELEVATED"
+        score = sum([cpu > 85, ram > 85, pred == -1])
+        status = "SAFE"; mag = 25
+        if cpu > 98 or score >= 2: status = "SEVERE"; mag = 350
+        elif score == 1: status = "ELEVATED"; mag = 150
 
-        print(f"📊 CPU: {cpu}% | RAM: {ram}% | ANOMALY: {prediction==-1} | STATUS: {status}")
-        
-        send_to_arduino(status)
-        upload_to_cloud(status, cpu, ram)
+        print(f"📊 CPU: {cpu}% | STATUS: {status}")
+        if ser: ser.write(f"{status}\n".encode())
+        sync_cloud(status, mag)
 
         if status == "SEVERE":
-            print("🚨 SEVERE THREAT DETECTED! Starting 20s Verification Timer...")
-            start_time = time.time()
-            verified = False
-            
-            while time.time() - start_time < 20:
-                upload_to_cloud("SEVERE", cpu, ram)
-                
-                # Manual entry
-                key = input("ENTER SECURITY KEY TO DISARM: ")
-                if key == SECURITY_KEY:
-                    print("Identity Verified. System Reset.")
-                    verified = True
-                    break
-                else:
-                    print("Access Denied.")
-            
-            if not verified:
-                print("⚠️ VERIFICATION TIMEOUT! System Locked in SEVERE mode.")
-
+            start = time.time()
+            while time.time() - start < 20:
+                key = input("🚨 ENTER SECURITY KEY: ")
+                if key == SECURITY_KEY: break
         time.sleep(1)
-
 except KeyboardInterrupt:
-    print("\n Shutdown.")
     if ser: ser.close()
