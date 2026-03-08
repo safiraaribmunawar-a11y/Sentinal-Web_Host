@@ -7,62 +7,103 @@
         body, html { margin:0; padding:0; background:#00020a; overflow:hidden; }
         #map { height: 100vh; width: 100vw; background: #00020a; }
         .hud { 
-            position: absolute; z-index: 1000; background: rgba(0,10,30,0.9); 
+            position: absolute; z-index: 1000; background: rgba(0,10,30,0.92); 
             border: 1px solid #00d4ff; padding: 15px; font-family: monospace;
-            color: #00d4ff; top: 20px; left: 20px; width: 260px;
+            color: #00d4ff; top: 20px; left: 20px; width: 280px;
         }
-        .legend { top: auto; bottom: 30px; left: 20px; font-size: 11px; }
-        .box { height: 10px; width: 10px; display: inline-block; margin-right: 8px; }
+        .legend { top: auto; bottom: 30px; left: 20px; font-size: 11px; width: 220px; }
+        .box { height: 10px; width: 10px; display: inline-block; margin-right: 8px; border-radius: 2px; }
+        .stat { margin-top: 6px; font-size: 12px; color: #88ccff; }
     </style>
 </head>
 <body>
     <div class="hud">
-        <h2 style="margin:0; font-size:14px;">SENTINEL MESH</h2>
-        <div id="status" style="margin-top:10px; color:#0088ff;">SCANNING...</div>
+        <h2 style="margin:0; font-size:14px; letter-spacing:2px;">SENTINEL MESH</h2>
+        <div id="status" style="margin-top:10px; color:#0088ff; font-size:12px;">SCANNING...</div>
+        <div class="stat">Devices online: <span id="stat-devices">0</span></div>
+        <div class="stat">Total SEVERE reports: <span id="stat-severe" style="color:#ff4444;">0</span></div>
     </div>
     <div class="hud legend">
-        <div><span class="box" style="background:#002b5e;"></span> &le; 50 (SECURE)</div>
-        <div><span class="box" style="background:#ffff00;"></span> 51-200 (ELEVATED)</div>
-        <div><span class="box" style="background:#ff0000;"></span> &gt; 200 (CRITICAL)</div>
+        <div style="margin-bottom:5px; color:#00d4ff; font-size:11px;">THREAT LEVEL BY COUNTRY</div>
+        <div style="margin:4px 0;"><span class="box" style="background:#002b5e;"></span> SECURE (no reports)</div>
+        <div style="margin:4px 0;"><span class="box" style="background:#0055ff;"></span> MONITORED (1–49 severe)</div>
+        <div style="margin:4px 0;"><span class="box" style="background:#ffff00;"></span> ELEVATED (50–199 severe)</div>
+        <div style="margin:4px 0;"><span class="box" style="background:#ff0000;"></span> CRITICAL (200+ severe)</div>
     </div>
     <div id="map"></div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
         let geojsonLayer;
-        let globalThreats = {};
+        let countryData = {};   // { "Bangladesh": { severe_count: 12, color: "blue" }, ... }
 
-        function getSectorColor(name) {
-            let val = globalThreats[name] || 0;
-            if (val > 200) return '#ff0000';
-            if (val > 50)  return '#ffff00';
-            return '#002b5e';
+        const colorMap = {
+            "red":    "#ff0000",
+            "yellow": "#ffff00",
+            "blue":   "#0055ff",
+            "green":  "#002b5e"
+        };
+
+        function getCountryColor(name) {
+            const info = countryData[name];
+            if (!info) return "#002b5e";  // secure default
+            return colorMap[info.color] || "#002b5e";
         }
 
         function sectorStyle(f) {
-            return { fillColor: getSectorColor(f.properties.name), weight: 1, color: '#00d4ff', fillOpacity: 0.8 };
+            const name = f.properties.name || f.properties.ADMIN || f.properties.NAME;
+            return {
+                fillColor:   getCountryColor(name),
+                weight:      1,
+                color:       "#00d4ff",
+                fillOpacity: 0.8
+            };
         }
 
+        // Load world GeoJSON
         fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson')
             .then(res => res.json())
-            .then(data => { geojsonLayer = L.geoJson(data, { style: sectorStyle }).addTo(map); });
+            .then(data => {
+                geojsonLayer = L.geoJson(data, {
+                    style: sectorStyle,
+                    onEachFeature: (feature, layer) => {
+                        const name = feature.properties.name || feature.properties.ADMIN;
+                        layer.on('mouseover', function() {
+                            const info = countryData[name];
+                            const count = info ? info.severe_count : 0;
+                            const color = info ? info.color.toUpperCase() : "SECURE";
+                            layer.bindTooltip(
+                                `<b>${name}</b><br>Severe reports: ${count}<br>Status: ${color}`,
+                                { sticky: true, className: 'leaflet-tooltip' }
+                            ).openTooltip();
+                        });
+                    }
+                }).addTo(map);
+            });
 
         async function updateMesh() {
             try {
                 const response = await fetch('/api/stats');
                 const data = await response.json();
-                let newThreats = {};
-                data.zones.forEach(z => {
-                    let country = "Unknown";
-                    if (z.lat > 20 && z.lat < 27 && z.lon > 88 && z.lon < 93) country = "Bangladesh";
-                    if (country !== "Unknown") newThreats[country] = Math.max(newThreats[country] || 0, z.magnitude);
-                });
-                globalThreats = newThreats;
+
+                // Update country colors
+                countryData = data.countries || {};
                 if (geojsonLayer) geojsonLayer.setStyle(sectorStyle);
-                document.getElementById('status').innerText = "MESH ONLINE | " + data.zones.length + " ACTIVE";
-            } catch(e) {}
+
+                // Update HUD
+                document.getElementById('status').innerText =
+                    "MESH ONLINE | " + (data.total_devices || 0) + " device(s) reporting";
+                document.getElementById('stat-devices').innerText = data.total_devices || 0;
+                document.getElementById('stat-severe').innerText  = data.total_severe  || 0;
+
+            } catch(e) {
+                document.getElementById('status').innerText = "CONNECTION LOST";
+            }
         }
+
         setInterval(updateMesh, 3000);
+        updateMesh();
     </script>
 </body>
 </html>
