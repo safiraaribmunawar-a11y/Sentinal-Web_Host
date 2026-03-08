@@ -18,13 +18,25 @@ def report():
     try:
         data = request.get_json()
         new_hit = {
-            "lat": float(data.get('lat', 23.81)),
-            "lon": float(data.get('lon', 90.41)),
+            "lat":       float(data.get('lat', 23.81)),
+            "lon":       float(data.get('lon', 90.41)),
             "magnitude": int(data.get('magnitude', 0)),
-            "timestamp": time.time()  # Marks the exact moment of the attack
+            "device_id": data.get('device_id', 'unknown'),
+            "severity":  data.get('severity', 'SECURE'),
+            "timestamp": time.time()
         }
         mesh_registry.append(new_hit)
+        print(f"[REPORT] {new_hit['device_id']} | {new_hit['severity']} | magnitude={new_hit['magnitude']}")
         return jsonify({"status": "Success"}), 200
+    except Exception as e:
+        return jsonify({"status": "Error", "message": str(e)}), 400
+
+@app.route('/api/heartbeat', methods=['POST'])
+def heartbeat():
+    try:
+        data = request.get_json()
+        print(f"[HEARTBEAT] {data.get('device_id')} | {data.get('severity')} | CPU={data.get('cpu_percent')}%")
+        return jsonify({"status": "alive"}), 200
     except Exception as e:
         return jsonify({"status": "Error", "message": str(e)}), 400
 
@@ -32,10 +44,8 @@ def report():
 def stats():
     global mesh_registry
     now = time.time()
-    
-    # AUTO-RESET: Remove any report older than 10 seconds
+    # AUTO-RESET: Remove reports older than 10 seconds
     mesh_registry = [hit for hit in mesh_registry if now - hit['timestamp'] < 10]
-    
     return jsonify({"zones": mesh_registry})
 
 if __name__ == "__main__":
