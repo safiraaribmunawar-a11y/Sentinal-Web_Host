@@ -22,6 +22,18 @@
         <div id="status" style="margin-top:10px; color:#0088ff; font-size:12px;">SCANNING...</div>
         <div class="stat">Devices online: <span id="stat-devices">0</span></div>
         <div class="stat">Total SEVERE reports: <span id="stat-severe" style="color:#ff4444;">0</span></div>
+        <button onclick="clearReports()" style="
+            margin-top: 12px;
+            width: 100%;
+            padding: 8px;
+            background: transparent;
+            border: 1px solid #ff4444;
+            color: #ff4444;
+            font-family: monospace;
+            font-size: 11px;
+            letter-spacing: 1px;
+            cursor: pointer;
+        ">CLEAR ALL REPORTS</button>
     </div>
     <div class="hud legend">
         <div style="margin-bottom:5px; color:#00d4ff; font-size:11px;">THREAT LEVEL BY COUNTRY</div>
@@ -104,6 +116,20 @@
 
         setInterval(updateMesh, 3000);
         updateMesh();
+
+        async function clearReports() {
+            if (!confirm("Clear all reports from the map?")) return;
+            try {
+                await fetch('/api/clear', { method: 'POST' });
+                countryData = {};
+                if (geojsonLayer) geojsonLayer.setStyle(sectorStyle);
+                document.getElementById('stat-severe').innerText  = 0;
+                document.getElementById('stat-devices').innerText = 0;
+                document.getElementById('status').innerText = "REPORTS CLEARED";
+            } catch(e) {
+                alert("Failed to clear reports.");
+            }
+        }
     </script>
 </body>
 </html>
