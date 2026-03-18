@@ -2,19 +2,38 @@ from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 import os
 import time
+import json
 from collections import defaultdict
 
 app = Flask(__name__)
 CORS(app)
 
-# Global registry with timestamp support
-mesh_registry = []
+# Persistent storage file
+REGISTRY_FILE = "mesh_registry.json"
+
+def load_registry():
+    """Load registry from file, return empty list if not found."""
+    try:
+        if os.path.exists(REGISTRY_FILE):
+            with open(REGISTRY_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"[WARN] Could not load registry: {e}")
+    return []
+
+def save_registry(registry):
+    """Save registry to file."""
+    try:
+        with open(REGISTRY_FILE, "w") as f:
+            json.dump(registry, f)
+    except Exception as e:
+        print(f"[WARN] Could not save registry: {e}")
+
+# Load on startup
+mesh_registry = load_registry()
+print(f"[STARTUP] Loaded {len(mesh_registry)} existing reports from disk.")
 
 def get_country_from_coords(lat, lon):
-    """
-    Basic coordinate-to-country mapping.
-    Expand this list as more devices from different countries connect.
-    """
     if 20 <= lat <= 27 and 88 <= lon <= 93:
         return "Bangladesh"
     if 24 <= lat <= 50 and -125 <= lon <= -66:
@@ -46,19 +65,13 @@ def get_country_from_coords(lat, lon):
     return "Unknown"
 
 def get_severity_color(severe_count):
-    """
-    Color based on number of SEVERE reports from devices in that country.
-    Blue   = 1-49   (some threat activity)
-    Yellow = 50-199 (elevated regional threat)
-    Red    = 200+   (critical regional threat)
-    """
     if severe_count >= 200:
         return "red"
     elif severe_count >= 50:
         return "yellow"
     elif severe_count >= 1:
         return "blue"
-    return "green"  # secure / no reports
+    return "green"
 
 @app.route('/')
 def index():
@@ -66,10 +79,11 @@ def index():
 
 @app.route('/api/report', methods=['POST'])
 def report():
+    global mesh_registry
     try:
         data = request.get_json()
-        lat = float(data.get('lat', 23.81))
-        lon = float(data.get('lon', 90.41))
+        lat      = float(data.get('lat', 23.81))
+        lon      = float(data.get('lon', 90.41))
         severity = data.get('severity', 'SECURE').upper()
 
         new_hit = {
@@ -82,6 +96,7 @@ def report():
             "timestamp":  time.time()
         }
         mesh_registry.append(new_hit)
+        save_registry(mesh_registry)  # persist to disk
         print(f"[REPORT] {new_hit['device_id']} | {new_hit['country']} | {severity} | magnitude={new_hit['magnitude']}")
         return jsonify({"status": "Success"}), 200
     except Exception as e:
@@ -101,8 +116,13 @@ def stats():
     global mesh_registry
     now = time.time()
 
-    # Remove reports older than 60 seconds
-    mesh_registry = [h for h in mesh_registry if now - h['timestamp'] < 60]
+    # Keep SEVERE reports for 24 hours, others for 60 seconds
+    mesh_registry = [
+        h for h in mesh_registry
+        if (h['severity'] == 'SEVERE' and now - h['timestamp'] < 86400)
+        or (h['severity'] != 'SEVERE' and now - h['timestamp'] < 60)
+    ]
+    save_registry(mesh_registry)
 
     # Count SEVERE reports per country
     severe_counts = defaultdict(int)
@@ -110,7 +130,6 @@ def stats():
         if hit['severity'] == 'SEVERE':
             severe_counts[hit['country']] += 1
 
-    # Build country summary
     country_summary = {}
     for country, count in severe_counts.items():
         if country == "Unknown":
@@ -120,7 +139,6 @@ def stats():
             "color": get_severity_color(count)
         }
 
-    # Also include countries with non-severe reports (show as green/blue)
     for hit in mesh_registry:
         c = hit['country']
         if c != "Unknown" and c not in country_summary:
@@ -130,13 +148,20 @@ def stats():
             }
 
     return jsonify({
-        "zones": mesh_registry,
-        "countries": country_summary,
-        "total_severe": sum(severe_counts.values()),
+        "zones":         mesh_registry,
+        "countries":     country_summary,
+        "total_severe":  sum(severe_counts.values()),
         "total_devices": len(set(h['device_id'] for h in mesh_registry))
     })
+
+@app.route('/api/clear', methods=['POST'])
+def clear():
+    """Admin endpoint to manually clear all reports."""
+    global mesh_registry
+    mesh_registry = []
+    save_registry(mesh_registry)
+    return jsonify({"status": "cleared"}), 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-
