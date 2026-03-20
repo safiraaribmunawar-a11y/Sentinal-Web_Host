@@ -34,34 +34,152 @@ mesh_registry = load_registry()
 print(f"[STARTUP] Loaded {len(mesh_registry)} existing reports from disk.")
 
 def get_country_from_coords(lat, lon):
-    if 20 <= lat <= 27 and 88 <= lon <= 93:
+    # More specific countries first to avoid overlap
+
+    # Bangladesh
+    if 20.7 <= lat <= 26.7 and 88.0 <= lon <= 92.7:
         return "Bangladesh"
-    if 24 <= lat <= 50 and -125 <= lon <= -66:
-        return "United States"
-    if 49 <= lat <= 61 and -9 <= lon <= 2:
+
+    # United Kingdom
+    if 49.9 <= lat <= 60.9 and -8.2 <= lon <= 1.8:
         return "United Kingdom"
-    if 41 <= lat <= 51 and -5 <= lon <= 10:
-        return "France"
-    if 47 <= lat <= 55 and 6 <= lon <= 15:
-        return "Germany"
-    if 36 <= lat <= 47 and 6 <= lon <= 19:
-        return "Italy"
-    if 35 <= lat <= 44 and -10 <= lon <= 5:
+
+    # Ireland
+    if 51.4 <= lat <= 55.4 and -10.5 <= lon <= -6.0:
+        return "Ireland"
+
+    # Portugal
+    if 36.8 <= lat <= 42.2 and -9.5 <= lon <= -6.2:
+        return "Portugal"
+
+    # Spain
+    if 35.9 <= lat <= 43.8 and -9.3 <= lon <= 4.3:
         return "Spain"
-    if 43 <= lat <= 70 and 19 <= lon <= 68:
-        return "Russia"
-    if 8 <= lat <= 37 and 68 <= lon <= 98:
+
+    # France
+    if 42.3 <= lat <= 51.1 and -4.8 <= lon <= 8.2:
+        return "France"
+
+    # Germany
+    if 47.3 <= lat <= 55.1 and 5.9 <= lon <= 15.0:
+        return "Germany"
+
+    # Italy
+    if 36.6 <= lat <= 47.1 and 6.6 <= lon <= 18.5:
+        return "Italy"
+
+    # Netherlands
+    if 50.7 <= lat <= 53.6 and 3.3 <= lon <= 7.2:
+        return "Netherlands"
+
+    # Belgium
+    if 49.5 <= lat <= 51.5 and 2.5 <= lon <= 6.4:
+        return "Belgium"
+
+    # Switzerland
+    if 45.8 <= lat <= 47.8 and 5.9 <= lon <= 10.5:
+        return "Switzerland"
+
+    # Austria
+    if 46.4 <= lat <= 49.0 and 9.5 <= lon <= 17.2:
+        return "Austria"
+
+    # Poland
+    if 49.0 <= lat <= 54.9 and 14.1 <= lon <= 24.2:
+        return "Poland"
+
+    # Ukraine
+    if 44.4 <= lat <= 52.4 and 22.1 <= lon <= 40.2:
+        return "Ukraine"
+
+    # Sweden
+    if 55.3 <= lat <= 69.1 and 11.1 <= lon <= 24.2:
+        return "Sweden"
+
+    # Norway
+    if 57.9 <= lat <= 71.2 and 4.5 <= lon <= 31.1:
+        return "Norway"
+
+    # Finland
+    if 59.8 <= lat <= 70.1 and 20.0 <= lon <= 31.6:
+        return "Finland"
+
+    # Turkey
+    if 35.8 <= lat <= 42.1 and 26.0 <= lon <= 44.8:
+        return "Turkey"
+
+    # Saudi Arabia
+    if 16.4 <= lat <= 32.2 and 36.5 <= lon <= 55.7:
+        return "Saudi Arabia"
+
+    # Pakistan
+    if 23.7 <= lat <= 37.1 and 60.9 <= lon <= 77.8:
+        return "Pakistan"
+
+    # India (check before China due to overlap)
+    if 8.1 <= lat <= 35.5 and 68.1 <= lon <= 97.4:
         return "India"
-    if 18 <= lat <= 54 and 73 <= lon <= 135:
+
+    # China
+    if 18.2 <= lat <= 53.6 and 73.5 <= lon <= 135.1:
         return "China"
-    if 30 <= lat <= 46 and 129 <= lon <= 146:
+
+    # Japan
+    if 24.2 <= lat <= 45.7 and 122.9 <= lon <= 145.8:
         return "Japan"
-    if -35 <= lat <= -10 and 113 <= lon <= 154:
+
+    # South Korea
+    if 33.1 <= lat <= 38.6 and 124.6 <= lon <= 129.6:
+        return "South Korea"
+
+    # Indonesia
+    if -11.0 <= lat <= 6.1 and 95.0 <= lon <= 141.0:
+        return "Indonesia"
+
+    # Australia
+    if -43.7 <= lat <= -10.7 and 113.2 <= lon <= 153.6:
         return "Australia"
-    if 42 <= lat <= 83 and -141 <= lon <= -52:
+
+    # New Zealand
+    if -47.3 <= lat <= -34.4 and 166.4 <= lon <= 178.6:
+        return "New Zealand"
+
+    # Canada
+    if 41.7 <= lat <= 83.1 and -141.0 <= lon <= -52.6:
         return "Canada"
-    if -34 <= lat <= 5 and -74 <= lon <= -34:
+
+    # United States
+    if 24.4 <= lat <= 49.4 and -125.0 <= lon <= -66.9:
+        return "United States"
+
+    # Mexico
+    if 14.5 <= lat <= 32.7 and -117.1 <= lon <= -86.7:
+        return "Mexico"
+
+    # Brazil
+    if -33.8 <= lat <= 5.3 and -73.9 <= lon <= -34.8:
         return "Brazil"
+
+    # Argentina
+    if -55.1 <= lat <= -21.8 and -73.6 <= lon <= -53.6:
+        return "Argentina"
+
+    # South Africa
+    if -34.8 <= lat <= -22.1 and 16.5 <= lon <= 32.9:
+        return "South Africa"
+
+    # Nigeria
+    if 4.3 <= lat <= 13.9 and 2.7 <= lon <= 14.7:
+        return "Nigeria"
+
+    # Egypt
+    if 22.0 <= lat <= 31.7 and 24.7 <= lon <= 37.1:
+        return "Egypt"
+
+    # Russia — must be last as it is enormous and overlaps many ranges
+    if 41.2 <= lat <= 81.9 and 19.6 <= lon <= 180.0:
+        return "Russia"
+
     return "Unknown"
 
 def get_severity_color(severe_count):
