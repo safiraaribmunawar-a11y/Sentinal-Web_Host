@@ -116,10 +116,10 @@ def get_country_from_coords(lat, lon):
         return "Australia"
     if -47.3 <= lat <= -34.4 and 166.4 <= lon <= 178.6:
         return "New Zealand"
-    if 41.7 <= lat <= 83.1 and -141.0 <= lon <= -52.6:
-        return "Canada"
     if 24.4 <= lat <= 49.4 and -125.0 <= lon <= -66.9:
         return "United States"
+    if 41.7 <= lat <= 83.1 and -141.0 <= lon <= -52.6:
+        return "Canada"
     if 14.5 <= lat <= 32.7 and -117.1 <= lon <= -86.7:
         return "Mexico"
     if -33.8 <= lat <= 5.3 and -73.9 <= lon <= -34.8:
