@@ -242,6 +242,7 @@ def download_zip():
         ('downloads/requirements.txt',         'Sentinel/requirements.txt'),
         ('downloads/stress_test.py',           'Sentinel/stress_test.py'),
         ('downloads/demo.py',                  'Sentinel/demo.py'),
+        ('downloads/sentinel_setup.bat',       'Sentinel/sentinel_setup.bat'),
         ('downloads/arduino/edr_controller.ino', 'Sentinel/arduino/edr_controller.ino'),
     ]
     buf = io.BytesIO()
