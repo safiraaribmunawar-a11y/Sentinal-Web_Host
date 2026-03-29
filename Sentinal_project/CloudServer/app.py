@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_cors import CORS
 import os
 import time
@@ -219,6 +219,24 @@ def stats():
 def clear():
     db_clear()
     return jsonify({"status": "cleared"}), 200
+
+@app.route('/download/sentinel_setup.bat')
+def download_setup():
+    """Serve the Windows setup batch file."""
+    return send_from_directory('downloads', 'sentinel_setup.bat',
+                               as_attachment=True,
+                               download_name='sentinel_setup.bat')
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    """Serve EDR Python files for the installer to download."""
+    allowed = [
+        'edr_main.py', 'monitor.py', 'detector.py',
+        'arduino_comm.py', 'reporter.py', 'config.py', 'requirements.txt'
+    ]
+    if filename not in allowed:
+        return "Not found", 404
+    return send_from_directory('downloads', filename, as_attachment=True)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
