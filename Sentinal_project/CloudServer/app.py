@@ -227,12 +227,40 @@ def download_setup():
                                as_attachment=True,
                                download_name='sentinel_setup.bat')
 
+@app.route('/download/sentinel.zip')
+def download_zip():
+    """Serve the full Sentinel EDR as a ZIP file."""
+    import zipfile
+    import io
+    files = [
+        ('downloads/edr_main.py',              'Sentinel/edr_main.py'),
+        ('downloads/monitor.py',               'Sentinel/monitor.py'),
+        ('downloads/detector.py',              'Sentinel/detector.py'),
+        ('downloads/arduino_comm.py',          'Sentinel/arduino_comm.py'),
+        ('downloads/reporter.py',              'Sentinel/reporter.py'),
+        ('downloads/config.py',                'Sentinel/config.py'),
+        ('downloads/requirements.txt',         'Sentinel/requirements.txt'),
+        ('downloads/stress_test.py',           'Sentinel/stress_test.py'),
+        ('downloads/arduino/edr_controller.ino', 'Sentinel/arduino/edr_controller.ino'),
+    ]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for fpath, arcname in files:
+            if os.path.exists(fpath):
+                zf.write(fpath, arcname)
+    buf.seek(0)
+    from flask import send_file
+    return send_file(buf, as_attachment=True,
+                     download_name='Sentinel.zip',
+                     mimetype='application/zip')
+
 @app.route('/download/<filename>')
 def download_file(filename):
-    """Serve EDR Python files for the installer to download."""
+    """Serve individual EDR files."""
     allowed = [
         'edr_main.py', 'monitor.py', 'detector.py',
-        'arduino_comm.py', 'reporter.py', 'config.py', 'requirements.txt'
+        'arduino_comm.py', 'reporter.py', 'config.py',
+        'requirements.txt', 'stress_test.py'
     ]
     if filename not in allowed:
         return "Not found", 404
