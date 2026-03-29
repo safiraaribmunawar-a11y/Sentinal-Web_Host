@@ -14,15 +14,7 @@
         .legend { top: auto; bottom: 30px; left: 20px; font-size: 11px; width: 220px; }
         .box { height: 10px; width: 10px; display: inline-block; margin-right: 8px; border-radius: 2px; }
         .stat { margin-top: 6px; font-size: 12px; color: #88ccff; }
-    </style>
-</head>
-<body>
-    <div class="hud">
-        <h2 style="margin:0; font-size:14px; letter-spacing:2px;">SENTINEL MESH</h2>
-        <div id="status" style="margin-top:10px; color:#0088ff; font-size:12px;">SCANNING...</div>
-        <div class="stat">Devices online: <span id="stat-devices">0</span></div>
-        <div class="stat">Total SEVERE reports: <span id="stat-severe" style="color:#ff4444;">0</span></div>
-        <button onclick="clearReports()" style="
+        .btn-clear {
             margin-top: 12px;
             width: 100%;
             padding: 8px;
@@ -33,8 +25,9 @@
             font-size: 11px;
             letter-spacing: 1px;
             cursor: pointer;
-        ">CLEAR ALL REPORTS</button>
-        <a href="/download/sentinel_setup.bat" style="
+            box-sizing: border-box;
+        }
+        .btn-download {
             display: block;
             margin-top: 8px;
             width: 100%;
@@ -49,7 +42,19 @@
             text-align: center;
             text-decoration: none;
             box-sizing: border-box;
-        ">DOWNLOAD SENTINEL</a>
+        }
+        .btn-download:hover { background: #00aacc; }
+        .btn-clear:hover { background: rgba(255,68,68,0.1); }
+    </style>
+</head>
+<body>
+    <div class="hud">
+        <h2 style="margin:0; font-size:14px; letter-spacing:2px;">SENTINEL MESH</h2>
+        <div id="status" style="margin-top:10px; color:#0088ff; font-size:12px;">SCANNING...</div>
+        <div class="stat">Devices online: <span id="stat-devices">0</span></div>
+        <div class="stat">Total SEVERE reports: <span id="stat-severe" style="color:#ff4444;">0</span></div>
+        <button class="btn-clear" onclick="clearReports()">CLEAR ALL REPORTS</button>
+        <a class="btn-download" onclick="downloadSentinel()">DOWNLOAD SENTINEL</a>
     </div>
     <div class="hud legend">
         <div style="margin-bottom:5px; color:#00d4ff; font-size:11px;">THREAT LEVEL BY COUNTRY</div>
@@ -64,7 +69,7 @@
     <script>
         const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
         let geojsonLayer;
-        let countryData = {};   // { "Bangladesh": { severe_count: 12, color: "blue" }, ... }
+        let countryData = {};
 
         const colorMap = {
             "red":    "#ff0000",
@@ -75,7 +80,7 @@
 
         function getCountryColor(name) {
             const info = countryData[name];
-            if (!info) return "#002b5e";  // secure default
+            if (!info) return "#002b5e";
             return colorMap[info.color] || "#002b5e";
         }
 
@@ -89,7 +94,6 @@
             };
         }
 
-        // Load world GeoJSON
         fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson')
             .then(res => res.json())
             .then(data => {
@@ -114,17 +118,12 @@
             try {
                 const response = await fetch('/api/stats');
                 const data = await response.json();
-
-                // Update country colors
                 countryData = data.countries || {};
                 if (geojsonLayer) geojsonLayer.setStyle(sectorStyle);
-
-                // Update HUD
                 document.getElementById('status').innerText =
                     "MESH ONLINE | " + (data.total_devices || 0) + " device(s) reporting";
                 document.getElementById('stat-devices').innerText = data.total_devices || 0;
                 document.getElementById('stat-severe').innerText  = data.total_severe  || 0;
-
             } catch(e) {
                 document.getElementById('status').innerText = "CONNECTION LOST";
             }
@@ -145,6 +144,16 @@
             } catch(e) {
                 alert("Failed to clear reports.");
             }
+        }
+
+        function downloadSentinel() {
+            // Force download using a hidden anchor with full URL
+            const a = document.createElement('a');
+            a.href = window.location.origin + '/download/sentinel.zip';
+            a.download = 'Sentinel.zip';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         }
     </script>
 </body>
