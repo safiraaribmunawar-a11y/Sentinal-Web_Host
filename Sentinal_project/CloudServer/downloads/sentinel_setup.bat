@@ -13,87 +13,97 @@ echo  Please do not close this window.
 echo.
 pause
 
-:: ── Check if Python is installed ────────────────────────────────
+:: ── Step 1: Check Python ─────────────────────────────────────────
 echo.
 echo  [1/5] Checking Python installation...
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo.
-    echo  Python not found. Downloading Python 3.13...
-    echo  Please wait...
+    echo  Python not found. Downloading Python 3.13.1...
     curl -o "%TEMP%\python_installer.exe" "https://www.python.org/ftp/python/3.13.1/python-3.13.1-amd64.exe"
     echo  Installing Python...
     "%TEMP%\python_installer.exe" /quiet InstallAllUsers=1 PrependPath=1 Include_test=0
-    echo  Python installed successfully.
+    del "%TEMP%\python_installer.exe"
+    echo  Python installed. Restarting setup to apply PATH...
+    :: Refresh PATH so python is available
+    call refreshenv >nul 2>&1
+    python --version >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo.
+        echo  [!] Python installed but PATH not updated yet.
+        echo  Please close this window and double-click sentinel_setup.bat again.
+        echo.
+        pause
+        exit
+    )
 ) else (
-    echo  Python found.
+    for /f "tokens=*" %%i in ('python --version') do echo  Found: %%i
 )
 
-:: ── Create Sentinel folder ───────────────────────────────────────
+:: ── Step 2: Set install location ─────────────────────────────────
 echo.
-echo  [2/5] Creating Sentinel folder...
-set INSTALL_DIR=%USERPROFILE%\Desktop\Sentinel
-if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
-cd /d "%INSTALL_DIR%"
-echo  Folder created at %INSTALL_DIR%
+echo  [2/5] Setting up Sentinel folder...
+set INSTALL_DIR=%~dp0
+echo  Using current folder: %INSTALL_DIR%
 
-:: ── Download Sentinel files ──────────────────────────────────────
+:: ── Step 3: Create or update venv ────────────────────────────────
 echo.
-echo  [3/5] Downloading Sentinel files...
-echo  Downloading from sentinel-mesh.onrender.com...
+echo  [3/5] Setting up virtual environment...
+if exist "%INSTALL_DIR%venv\Scripts\python.exe" (
+    echo  Virtual environment already exists — skipping creation.
+) else (
+    echo  Creating virtual environment...
+    python -m venv "%INSTALL_DIR%venv"
+    if %errorlevel% neq 0 (
+        echo  [!] Failed to create venv. Trying with py launcher...
+        py -3 -m venv "%INSTALL_DIR%venv"
+    )
+    echo  Virtual environment created.
+)
 
-curl -o "%INSTALL_DIR%\edr_main.py"     "https://sentinel-mesh.onrender.com/download/edr_main.py"
-curl -o "%INSTALL_DIR%\monitor.py"      "https://sentinel-mesh.onrender.com/download/monitor.py"
-curl -o "%INSTALL_DIR%\detector.py"     "https://sentinel-mesh.onrender.com/download/detector.py"
-curl -o "%INSTALL_DIR%\arduino_comm.py" "https://sentinel-mesh.onrender.com/download/arduino_comm.py"
-curl -o "%INSTALL_DIR%\reporter.py"     "https://sentinel-mesh.onrender.com/download/reporter.py"
-curl -o "%INSTALL_DIR%\config.py"       "https://sentinel-mesh.onrender.com/download/config.py"
-curl -o "%INSTALL_DIR%\requirements.txt" "https://sentinel-mesh.onrender.com/download/requirements.txt"
-
-echo  Files downloaded.
-
-:: ── Create virtual environment ───────────────────────────────────
+:: ── Step 4: Install requirements ─────────────────────────────────
 echo.
-echo  [4/5] Creating virtual environment...
-python -m venv "%INSTALL_DIR%\venv"
-echo  Virtual environment created.
-
-:: ── Install requirements ─────────────────────────────────────────
-echo.
-echo  [5/5] Installing required libraries...
-"%INSTALL_DIR%\venv\Scripts\pip.exe" install -r "%INSTALL_DIR%\requirements.txt" --quiet
+echo  [4/5] Installing required libraries...
+"%INSTALL_DIR%venv\Scripts\python.exe" -m pip install --upgrade pip --quiet
+"%INSTALL_DIR%venv\Scripts\pip.exe" install -r "%INSTALL_DIR%requirements.txt" --quiet
+if %errorlevel% neq 0 (
+    echo  [!] Some libraries failed. Trying again...
+    "%INSTALL_DIR%venv\Scripts\pip.exe" install -r "%INSTALL_DIR%requirements.txt"
+)
 echo  Libraries installed.
 
-:: ── Create run script ────────────────────────────────────────────
+:: ── Step 5: Create run script ─────────────────────────────────────
 echo.
-echo  Creating launch script...
+echo  [5/5] Creating launch shortcut...
 (
 echo @echo off
 echo title Sentinel EDR
 echo color 0B
 echo cd /d "%INSTALL_DIR%"
 echo call venv\Scripts\activate
+echo echo.
+echo echo  Starting Sentinel EDR...
+echo echo  Press Ctrl+C to stop.
+echo echo.
 echo python edr_main.py
 echo pause
-) > "%INSTALL_DIR%\Run_Sentinel.bat"
+) > "%INSTALL_DIR%Run_Sentinel.bat"
 
-:: ── Create desktop shortcut ──────────────────────────────────────
-copy "%INSTALL_DIR%\Run_Sentinel.bat" "%USERPROFILE%\Desktop\Run_Sentinel.bat" >nul
+:: Copy shortcut to Desktop
+copy "%INSTALL_DIR%Run_Sentinel.bat" "%USERPROFILE%\Desktop\Run_Sentinel.bat" >nul 2>&1
 
-:: ── Done ─────────────────────────────────────────────────────────
+:: ── Done ──────────────────────────────────────────────────────────
 echo.
 echo  ============================================================
 echo   SENTINEL EDR INSTALLED SUCCESSFULLY!
 echo  ============================================================
 echo.
-echo   Location: %INSTALL_DIR%
+echo   Location : %INSTALL_DIR%
+echo   Shortcut : Run_Sentinel.bat on your Desktop
 echo.
-echo   To run Sentinel:
-echo   Double-click "Run_Sentinel.bat" on your Desktop
-echo.
-echo   Before running, open config.py and set:
-echo   - SECURITY_CODE  (your secret code)
-echo   - ARDUINO_PORT   (e.g. COM3)
+echo   BEFORE RUNNING, open config.py and set:
+echo     SECURITY_CODE  = your secret code
+echo     ARDUINO_PORT   = your COM port (e.g. COM3)
+echo     REPORT_URL     = https://sentinel-mesh.onrender.com
 echo.
 echo  ============================================================
 echo.
