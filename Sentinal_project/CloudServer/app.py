@@ -244,6 +244,9 @@ def download_zip():
         ('downloads/demo.py',                  'Sentinel/demo.py'),
         ('downloads/sentinel_setup.bat',       'Sentinel/sentinel_setup.bat'),
         ('downloads/arduino/edr_controller.ino', 'Sentinel/arduino/edr_controller.ino'),
+        ('downloads/CloudServer/app.py',        'Sentinel/CloudServer/app.py'),
+        ('downloads/CloudServer/requirements.txt', 'Sentinel/CloudServer/requirements.txt'),
+        ('downloads/CloudServer/templates/dashboard.html', 'Sentinel/CloudServer/templates/dashboard.html'),
     ]
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
