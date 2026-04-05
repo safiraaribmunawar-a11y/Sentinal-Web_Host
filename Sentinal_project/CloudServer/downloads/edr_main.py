@@ -4,8 +4,6 @@ EDR (Endpoint Detection & Response) - Main Entry Point
 
 import sys
 import io
-
-# Fix Windows encoding for logging output only
 import logging
 
 class UTF8StreamHandler(logging.StreamHandler):
@@ -28,7 +26,6 @@ from arduino_comm import ArduinoController
 from reporter import ThreatReporter
 from config import Config
 
-# Set up logging — use custom handler for terminal, normal for file
 file_handler = logging.FileHandler('edr.log', encoding='utf-8')
 file_handler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s'))
 
@@ -90,18 +87,20 @@ def main():
             if new_severity != current_severity:
                 log.warning(f"Severity changed: {current_severity} -> {new_severity}")
                 current_severity = new_severity
-                reporter.send_report(metrics, smoothed_score, breakdown, current_severity)
+
+                # Only send report immediately for non-SEVERE changes
+                if new_severity != "SEVERE":
+                    reporter.send_report(metrics, smoothed_score, breakdown, current_severity)
 
                 if new_severity == "SEVERE" and severe_cooldown <= 0:
                     severe_cooldown = Config.SEVERE_COOLDOWN
                     handling_severe = True
                     score_history.clear()
 
-                    # Yellow LED + send WARN to Arduino during countdown
                     arduino.set_led("YELLOW")
                     arduino._send("WARN:20")
 
-                    # FULLY BLOCKING — show prompt and wait
+                    # BLOCKING — main loop pauses here until code entered or timeout
                     code_accepted = _prompt_security_code(
                         countdown=20,
                         security_code=Config.SECURITY_CODE,
@@ -116,12 +115,14 @@ def main():
                         arduino.set_led("YELLOW")
                         reporter.send_report(metrics, smoothed_score, breakdown, "ELEVATED", note="Code accepted")
                     else:
-                        # Timeout or wrong code — RED
                         log.error("Code failed. RED alert.")
                         current_severity = "SEVERE"
                         arduino.set_led("RED")
+                        # Report only sent AFTER timeout — not before
                         reporter.send_report(metrics, smoothed_score, breakdown, "SEVERE", note="Code timeout")
 
+                        # Lock in RED until kill switch
+                        log.warning("System locked RED. Flip kill switch to reset.")
                         print("\n" + "=" * 52)
                         print("  SYSTEM LOCKED - RED ALERT ACTIVE")
                         print("  Flip the kill switch to reset.")
@@ -202,17 +203,15 @@ def _prompt_security_code(countdown: int, security_code: str, arduino) -> bool:
                 print("\n\n  [!!] Timeout! RED alert triggered.\n")
                 return False
 
-            # Show current input and timer on same line
             sys.stdout.write(f"\r  [{remaining:2d}s] Code: {entered}   ")
             sys.stdout.flush()
 
-            # Check for keypress without blocking
             if msvcrt.kbhit():
                 ch = msvcrt.getwch()
-                if ch in ('\r', '\n'):  # Enter pressed
+                if ch in ('\r', '\n'):
                     print("")
                     break
-                elif ch == '\b':  # Backspace
+                elif ch == '\b':
                     entered = entered[:-1]
                 elif ch.isprintable():
                     entered += ch
@@ -220,7 +219,6 @@ def _prompt_security_code(countdown: int, security_code: str, arduino) -> bool:
             time.sleep(0.05)
 
     except Exception:
-        # Fallback for non-Windows
         entered = input(f"\n  Code: ").strip()
 
     print("")
