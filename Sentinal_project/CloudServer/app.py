@@ -2,64 +2,34 @@ from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_cors import CORS
 import os
 import time
-import requests as req
+import json
+import zipfile
+import io
 from collections import defaultdict
 
 app = Flask(__name__)
 CORS(app)
 
-# Supabase config
-SUPABASE_URL = "https://aimddblfkkzvsykzcaae.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpbWRkYmxma2t6dnN5a3pjYWFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMzUwMDYsImV4cCI6MjA4OTYxMTAwNn0.4n5dpXSc7wknonOoOWEgsAqE6nIhtQ5N2jv--ZQWjsA"
-HEADERS = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json",
-    "Prefer": "return=minimal"
-}
+REGISTRY_FILE = "mesh_registry.json"
 
-def db_insert(record):
-    """Insert a report into Supabase."""
+def load_registry():
     try:
-        r = req.post(
-            f"{SUPABASE_URL}/rest/v1/reports",
-            headers=HEADERS,
-            json=record,
-            timeout=10
-        )
-        if r.status_code not in (200, 201):
-            print(f"[DB ERROR] Insert failed: {r.status_code} {r.text[:100]}")
+        if os.path.exists(REGISTRY_FILE):
+            with open(REGISTRY_FILE, "r") as f:
+                return json.load(f)
     except Exception as e:
-        print(f"[DB ERROR] {e}")
-
-def db_fetch():
-    """Fetch all reports from last 24 hours."""
-    try:
-        cutoff = time.time() - 86400  # 24 hours ago
-        r = req.get(
-            f"{SUPABASE_URL}/rest/v1/reports?timestamp=gte.{cutoff}&order=timestamp.desc&limit=1000",
-            headers=HEADERS,
-            timeout=10
-        )
-        if r.status_code == 200:
-            return r.json()
-        print(f"[DB ERROR] Fetch failed: {r.status_code} {r.text[:100]}")
-    except Exception as e:
-        print(f"[DB ERROR] {e}")
+        print(f"[WARN] Could not load registry: {e}")
     return []
 
-def db_clear():
-    """Delete all reports."""
+def save_registry(registry):
     try:
-        r = req.delete(
-            f"{SUPABASE_URL}/rest/v1/reports?id=gte.0",
-            headers=HEADERS,
-            timeout=10
-        )
-        if r.status_code not in (200, 204):
-            print(f"[DB ERROR] Clear failed: {r.status_code} {r.text[:100]}")
+        with open(REGISTRY_FILE, "w") as f:
+            json.dump(registry, f)
     except Exception as e:
-        print(f"[DB ERROR] {e}")
+        print(f"[WARN] Could not save registry: {e}")
+
+mesh_registry = load_registry()
+print(f"[STARTUP] Loaded {len(mesh_registry)} existing reports from disk.")
 
 def get_country_from_coords(lat, lon):
     if 20.7 <= lat <= 26.7 and 88.0 <= lon <= 92.7:
@@ -151,13 +121,14 @@ def index():
 
 @app.route('/api/report', methods=['POST'])
 def report():
+    global mesh_registry
     try:
         data = request.get_json()
         lat      = float(data.get('lat', 23.81))
         lon      = float(data.get('lon', 90.41))
         severity = data.get('severity', 'SECURE').upper()
 
-        record = {
+        new_hit = {
             "lat":       lat,
             "lon":       lon,
             "country":   get_country_from_coords(lat, lon),
@@ -166,8 +137,9 @@ def report():
             "severity":  severity,
             "timestamp": time.time()
         }
-        db_insert(record)
-        print(f"[REPORT] {record['device_id']} | {record['country']} | {severity} | magnitude={record['magnitude']}")
+        mesh_registry.append(new_hit)
+        save_registry(mesh_registry)
+        print(f"[REPORT] {new_hit['device_id']} | {new_hit['country']} | {severity} | magnitude={new_hit['magnitude']}")
         return jsonify({"status": "Success"}), 200
     except Exception as e:
         return jsonify({"status": "Error", "message": str(e)}), 400
@@ -183,12 +155,20 @@ def heartbeat():
 
 @app.route('/api/stats')
 def stats():
-    reports = db_fetch()
+    global mesh_registry
+    now = time.time()
 
-    # Count SEVERE reports per country
+    # SEVERE reports kept 24 hours, others 60 seconds
+    mesh_registry = [
+        h for h in mesh_registry
+        if (h['severity'] == 'SEVERE' and now - h['timestamp'] < 86400)
+        or (h['severity'] != 'SEVERE' and now - h['timestamp'] < 60)
+    ]
+    save_registry(mesh_registry)
+
     severe_counts = defaultdict(int)
-    for hit in reports:
-        if hit.get('severity') == 'SEVERE':
+    for hit in mesh_registry:
+        if hit['severity'] == 'SEVERE':
             severe_counts[hit.get('country', 'Unknown')] += 1
 
     country_summary = {}
@@ -200,7 +180,7 @@ def stats():
             "color": get_severity_color(count)
         }
 
-    for hit in reports:
+    for hit in mesh_registry:
         c = hit.get('country', 'Unknown')
         if c != "Unknown" and c not in country_summary:
             country_summary[c] = {
@@ -209,44 +189,33 @@ def stats():
             }
 
     return jsonify({
-        "zones":         reports,
+        "zones":         mesh_registry,
         "countries":     country_summary,
         "total_severe":  sum(severe_counts.values()),
-        "total_devices": len(set(h.get('device_id') for h in reports))
+        "total_devices": len(set(h.get('device_id') for h in mesh_registry))
     })
 
 @app.route('/api/clear', methods=['POST'])
 def clear():
-    db_clear()
+    global mesh_registry
+    mesh_registry = []
+    save_registry(mesh_registry)
     return jsonify({"status": "cleared"}), 200
-
-@app.route('/download/sentinel_setup.bat')
-def download_setup():
-    """Serve the Windows setup batch file."""
-    return send_from_directory('downloads', 'sentinel_setup.bat',
-                               as_attachment=True,
-                               download_name='sentinel_setup.bat')
 
 @app.route('/download/sentinel.zip')
 def download_zip():
-    """Serve the full Sentinel EDR as a ZIP file."""
-    import zipfile
-    import io
     files = [
-        ('downloads/edr_main.py',              'Sentinel/edr_main.py'),
-        ('downloads/monitor.py',               'Sentinel/monitor.py'),
-        ('downloads/detector.py',              'Sentinel/detector.py'),
-        ('downloads/arduino_comm.py',          'Sentinel/arduino_comm.py'),
-        ('downloads/reporter.py',              'Sentinel/reporter.py'),
-        ('downloads/config.py',                'Sentinel/config.py'),
-        ('downloads/requirements.txt',         'Sentinel/requirements.txt'),
-        ('downloads/stress_test.py',           'Sentinel/stress_test.py'),
-        ('downloads/demo.py',                  'Sentinel/demo.py'),
-        ('downloads/sentinel_setup.bat',       'Sentinel/sentinel_setup.bat'),
+        ('downloads/edr_main.py',                'Sentinel/edr_main.py'),
+        ('downloads/monitor.py',                 'Sentinel/monitor.py'),
+        ('downloads/detector.py',                'Sentinel/detector.py'),
+        ('downloads/arduino_comm.py',            'Sentinel/arduino_comm.py'),
+        ('downloads/reporter.py',                'Sentinel/reporter.py'),
+        ('downloads/config.py',                  'Sentinel/config.py'),
+        ('downloads/requirements.txt',           'Sentinel/requirements.txt'),
+        ('downloads/stress_test.py',             'Sentinel/stress_test.py'),
+        ('downloads/demo.py',                    'Sentinel/demo.py'),
+        ('downloads/sentinel_setup.bat',         'Sentinel/sentinel_setup.bat'),
         ('downloads/arduino/edr_controller.ino', 'Sentinel/arduino/edr_controller.ino'),
-        ('downloads/CloudServer/app.py',        'Sentinel/CloudServer/app.py'),
-        ('downloads/CloudServer/requirements.txt', 'Sentinel/CloudServer/requirements.txt'),
-        ('downloads/CloudServer/templates/dashboard.html', 'Sentinel/CloudServer/templates/dashboard.html'),
     ]
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -261,11 +230,10 @@ def download_zip():
 
 @app.route('/download/<filename>')
 def download_file(filename):
-    """Serve individual EDR files."""
     allowed = [
         'edr_main.py', 'monitor.py', 'detector.py',
         'arduino_comm.py', 'reporter.py', 'config.py',
-        'requirements.txt', 'stress_test.py'
+        'requirements.txt', 'stress_test.py', 'sentinel_setup.bat'
     ]
     if filename not in allowed:
         return "Not found", 404
